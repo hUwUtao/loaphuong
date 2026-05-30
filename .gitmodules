@@ -1,0 +1,3 @@
+[submodule "cephome"]
+	path = cephome
+	url = git@github.com:hUwUtao/cephome.git
