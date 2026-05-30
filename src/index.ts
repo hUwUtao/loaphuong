@@ -2,6 +2,7 @@ import { NEngineDaemon } from "./daemon.ts";
 import { MetadataStore } from "./store.ts";
 import { RenderPipeline } from "./render.ts";
 import type { RenderRequest } from "./types.ts";
+import { randomBytes } from "node:crypto";
 
 const PORT = parseInt(process.env.PORT ?? "3100", 10);
 const NEUTRINO_ROOT = process.env.NEUTRINO_ROOT;
@@ -59,13 +60,28 @@ Bun.serve({
 
 console.log(`loaphuong running at http://127.0.0.1:${PORT}`);
 
+function genRunId(): string {
+	return randomBytes(4).toString("hex");
+}
+
 async function handleRender(req: Request): Promise<Response> {
 	const body = (await req.json()) as RenderRequest;
 	if (!body.musicxml) {
 		return Response.json({ error: "Missing musicxml" }, { status: 400 });
 	}
-	const result = await pipeline.render(body);
-	return Response.json(result);
+	const runId = genRunId();
+	const tag = `[run-${runId}]`;
+	const voice = body.voice ?? "merrow";
+	console.log(`${tag} render voice=${voice} mxml=${body.musicxml.length}B\n${body.musicxml}`);
+	const t = performance.now();
+	try {
+		const result = await pipeline.render(body, runId);
+		console.log(`${tag} done voice=${voice} notes=${result.notes} phones=${result.phones} ${(performance.now() - t).toFixed(0)}ms`);
+		return Response.json(result);
+	} catch (err) {
+		console.error(`${tag} FAILED voice=${voice}`, err);
+		throw err;
+	}
 }
 
 async function handleRenderStream(req: Request): Promise<Response> {
@@ -73,6 +89,10 @@ async function handleRenderStream(req: Request): Promise<Response> {
 	if (!body.musicxml) {
 		return Response.json({ error: "Missing musicxml" }, { status: 400 });
 	}
+	const runId = genRunId();
+	const tag = `[run-${runId}]`;
+	const voice = body.voice ?? "merrow";
+	console.log(`${tag} render-stream voice=${voice} mxml=${body.musicxml.length}B\n${body.musicxml}`);
 
 	const stream = new ReadableStream({
 		async start(controller) {
@@ -83,10 +103,13 @@ async function handleRenderStream(req: Request): Promise<Response> {
 
 			try {
 				send("progress", { step: "phonemes", message: "Running cephome phoneme pipeline..." });
-				const result = await pipeline.render(body);
+				const t = performance.now();
+				const result = await pipeline.render(body, runId);
 				send("progress", { step: "synthesis", message: "Running NEUTRINO synthesis..." });
 				send("complete", { wavPath: result.wavPath, notes: result.notes, phones: result.phones });
+				console.log(`${tag} done voice=${voice} notes=${result.notes} phones=${result.phones} ${(performance.now() - t).toFixed(0)}ms`);
 			} catch (err) {
+				console.error(`${tag} FAILED voice=${voice}`, err);
 				send("error", { message: err instanceof Error ? err.message : String(err) });
 			} finally {
 				controller.close();

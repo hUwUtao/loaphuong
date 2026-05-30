@@ -45,6 +45,7 @@ export class NEngineDaemon {
 		modelPath: string,
 		outputDir: string,
 		threads = 4,
+		runId = "????",
 	): Promise<void> {
 		const timingLab = `${outputDir}/timing.lab`;
 		const f0Path = `${outputDir}/output.f0`;
@@ -73,10 +74,33 @@ export class NEngineDaemon {
 			stderr: "pipe",
 		});
 
+		const tag = `[run-${runId}]`;
+		(async () => {
+			const reader = proc.stdout.getReader();
+			const decoder = new TextDecoder();
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				for (const line of decoder.decode(value).split("\n").filter(Boolean)) {
+					console.log(`${tag} ${line}`);
+				}
+			}
+		})();
+		(async () => {
+			const reader = proc.stderr.getReader();
+			const decoder = new TextDecoder();
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				for (const line of decoder.decode(value).split("\n").filter(Boolean)) {
+					console.error(`${tag} ${line}`);
+				}
+			}
+		})();
+
 		const exitCode = await proc.exited;
 		if (exitCode !== 0) {
-			const stderr = await new Response(proc.stderr).text();
-			throw new Error(`neutrino failed (exit ${exitCode}): ${stderr}`);
+			throw new Error(`neutrino failed (exit ${exitCode})`);
 		}
 	}
 

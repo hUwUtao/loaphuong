@@ -6,6 +6,9 @@
 	"scripts": {
 		"dev": "bun --hot src/index.ts",
 		"start": "NODE_ENV=production bun src/index.ts",
+		"build:linux": "bun build --compile --target=bun-linux-x64 src/main.ts --outfile=loaphuong",
+		"build:win": "bun build --compile --target=bun-windows-x64 src/main.ts --outfile=loaphuong",
+		"build:win:icon": "bun build --compile --target=bun-windows-x64 --windows-hide-console --windows-description=\"loaphuong NEUTRINO SVS Server\" --windows-version=1.0.0.0 src/main.ts --outfile=loaphuong",
 		"lint": "oxlint --type-aware --import-plugin --react-plugin",
 		"fmt": "oxfmt"
 	},

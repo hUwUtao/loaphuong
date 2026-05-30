@@ -1,6 +1,8 @@
 export interface RenderRequest {
-	musicxml: string;
+	musicxml?: string;
+	scorePath?: string;
 	voice?: string;
+	phonemeOverrides?: Record<string, string[]> | string[][];
 	options?: Record<string, unknown>;
 }
 
@@ -61,6 +63,7 @@ export interface RenderOutput {
 	notes: NoteOutput[];
 	phones: PhoneOutput[];
 	audio: AudioOutput | null;
+	phonemeExport?: Record<string, string>;
 }
 
 export interface RenderResponse {

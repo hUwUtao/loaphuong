@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import type { StoreEntry } from "./types.ts";
 
 const SCHEMA = `
@@ -36,7 +37,7 @@ export class MetadataStore {
 	private db: Database;
 
 	constructor(dbPath: string) {
-		const dir = dbPath.substring(0, dbPath.lastIndexOf("/"));
+		const dir = dirname(dbPath);
 		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 		this.db = new Database(dbPath);
 		this.db.exec("PRAGMA journal_mode=WAL");

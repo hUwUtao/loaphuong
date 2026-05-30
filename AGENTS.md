@@ -135,6 +135,37 @@ not input. Neutrino reads `full.lab` and generates timing predictions.
 
 Shorthand: set `NEUTRINO_ROOT` to the NEUTRINO directory root (must contain `bin/` and `model/`), and the individual paths derive from it.
 
+## Build
+
+Compile into a standalone executable with embedded Bun runtime:
+
+```bash
+bun run build:linux   # → loaphuong (ELF, Linux x64)
+bun run build:win     # → loaphuong.exe (PE, Windows x64)
+bun run build:win:icon  # same with metadata/hidden console
+```
+
+The binary bundles all JS/TS source (including cephome engine) + Bun runtime ~90MB.
+
+## Deployment Layout (Windows)
+
+```
+loaphuong.exe
+NEUTRINO/
+├── bin/
+│   ├── neutrino.exe
+│   └── *.dll           (CUDA/ONNX runtime libs)
+└── models/
+    ├── MERROW/
+    ├── NAKUMO/
+    ├── REINA/
+    ├── RUNO/
+    └── SOMA/
+```
+
+The executable auto-detects `NEUTRINO/` relative to itself (no env vars needed).
+Alternatively, set `NEUTRINO_ROOT` env var to override.
+
 ## API
 
 ### POST /api/render
