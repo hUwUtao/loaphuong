@@ -26,14 +26,21 @@ bun run build:win 2>&1 | tail -1
 echo "   -> $SRC/loaphuong.exe"
 
 # ── Build VST3 (optional, single-file format) ────────────────
-VST3_DLL="$DIST_WIN/loaphuong.vst3"
+VST3="$DIST_WIN/loaphuong.vst3"
 
 if command -v cargo >/dev/null 2>&1 && rustup target list --installed 2>/dev/null | grep -q x86_64-pc-windows-gnu; then
 	echo ":: building VST3 (cross x86_64-pc-windows-gnu) ..."
 	cd "$SRC/loaphuong-mscore/vst3"
-	cargo build --package loaphuong --target x86_64-pc-windows-gnu --release --lib 2>&1 | tail -1
-	cp "target/x86_64-pc-windows-gnu/release/loaphuong.dll" "$VST3_DLL"
-	echo "   -> $VST3_DLL"
+	if cargo build --package loaphuong --target x86_64-pc-windows-gnu --release --lib 2>&1; then
+		if [ -f "target/x86_64-pc-windows-gnu/release/loaphuong.dll" ]; then
+			cp "target/x86_64-pc-windows-gnu/release/loaphuong.dll" "$VST3"
+			echo "   -> $VST3 ($(du -h "$VST3" | cut -f1))"
+		else
+			echo "   WARN: DLL not found after build, skipping VST3"
+		fi
+	else
+		echo "   WARN: cargo build failed, skipping VST3"
+	fi
 else
 	echo ":: VST3 cross-compiler not available, skipping"
 fi
@@ -68,18 +75,20 @@ REM --- QML Plugin ---
 echo [1/2] Installing QML plugin ...
 set QML_DST=%USERPROFILE%\Documents\MuseScore4\Plugins\loaphuong\
 if not exist "!QML_DST!" mkdir "!QML_DST!"
-copy /y "loaphuong.qml" "!QML_DST!loaphuong.qml" >nul
-echo    -> !QML_DST!loaphuong.qml
+copy /y "loaphuong.qml" "!QML_DST!loaphuong.qml"
+if errorlevel 1 echo ERROR: QML copy failed & pause & exit /b 1
+echo    OK
 echo.
 
-REM --- VST3 Plugin (single-file format, system-wide) ---
+REM --- VST3 Plugin (single-file format) ---
 echo [2/2] Installing VST3 ...
 if exist "loaphuong.vst3" (
 	set VST3_DST=C:\Program Files\Common Files\VST3\loaphuong.vst3
 	if exist "!VST3_DST!" del /f "!VST3_DST!"
 	if not exist "C:\Program Files\Common Files\VST3" mkdir "C:\Program Files\Common Files\VST3"
-	copy /y "loaphuong.vst3" "!VST3_DST!" >nul
-	echo    -> !VST3_DST!
+	copy /y "loaphuong.vst3" "!VST3_DST!"
+	if errorlevel 1 echo ERROR: VST3 copy failed & pause & exit /b 1
+	echo    OK
 ) else (
 	echo    VST3 not bundled, skipping
 )
