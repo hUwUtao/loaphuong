@@ -1,6 +1,10 @@
 /archive/
 /node_modules/
-/.research/decomp/
+/.research/
 /loaphuong.exe
 /loaphuong-linux
 /NEUTRINO/
+/.workspace
+*.zip
+*.db
+*.gz

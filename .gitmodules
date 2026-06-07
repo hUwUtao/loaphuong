@@ -1,3 +1,6 @@
 [submodule "cephome"]
 	path = cephome
 	url = git@github.com:hUwUtao/cephome.git
+[submodule "loaphuong-mscore"]
+	path = loaphuong-mscore
+	url = git@github.com:hUwUtao/loaphuong-mscore.git

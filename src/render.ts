@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { existsSync, mkdirSync, writeFileSync, readFileSync, unlinkSync, symlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { SinsyLabelPipeline, VietnameseMoraPlanTranspiler, formatSimplePhoneGroups } from "../cephome/engine/vsinsy/index.ts";
+import { SinsyLabelPipeline, VietnameseMoraPlanTranspiler, formatSimplePhoneGroups, expressionForNote } from "../cephome/engine/vsinsy/index.ts";
 import type { PhoneEvent, ScoreNote } from "../cephome/engine/vsinsy/lab/types.ts";
 import type { NEngineDaemon } from "./daemon.ts";
 import type { MetadataStore } from "./store.ts";
@@ -37,6 +37,15 @@ function convertPositionOverrides(
 	return map;
 }
 
+function distinctPitchedNote(events: PhoneEvent[], index: number, direction: -1 | 1): ScoreNote | null {
+	const currentId = events[index]!.note.id;
+	for (let cursor = index + direction; cursor >= 0 && cursor < events.length; cursor += direction) {
+		const note = events[cursor]!.note;
+		if (note.id !== currentId && !note.isRest) return note;
+	}
+	return null;
+}
+
 function toNoteOutput(n: ScoreNote): NoteOutput {
 	return {
 		id: n.id,
@@ -53,7 +62,13 @@ function toNoteOutput(n: ScoreNote): NoteOutput {
 	};
 }
 
-function toPhoneOutput(e: PhoneEvent): PhoneOutput {
+function toPhoneOutput(e: PhoneEvent, events: PhoneEvent[], index: number): PhoneOutput {
+	const prev = distinctPitchedNote(events, index, -1);
+	const next = distinctPitchedNote(events, index, 1);
+	const expression = expressionForNote(
+		e.note, prev, next,
+		e.tone, e.phoneIndexInNote, e.phoneCountInNote, e.velocity ?? undefined,
+	);
 	return {
 		startNs: e.start,
 		endNs: e.end,
@@ -69,16 +84,7 @@ function toPhoneOutput(e: PhoneEvent): PhoneOutput {
 		velocity: e.velocity ?? null,
 		phoneIndexInNote: e.phoneIndexInNote,
 		phoneCountInNote: e.phoneCountInNote,
-		expression: {
-			energy: 70,
-			vibratoRateHz: 0,
-			vibratoDepthCents: 0,
-			vibratoStartRatio: 0,
-			pitchDeltaFromPrev: 0,
-			pitchDeltaToNext: 0,
-			tonalPitchOffset: 0,
-			toneMelodyRelation: "level",
-		},
+		expression,
 	};
 }
 
@@ -198,7 +204,7 @@ export class RenderPipeline {
 			model: voice,
 			source: xml,
 			notes: trace.score.notes.map(toNoteOutput),
-			phones: trace.events.map(toPhoneOutput),
+			phones: trace.events.map((e, i) => toPhoneOutput(e, trace.events, i)),
 			audio: null,
 			phonemeExport,
 		};
@@ -260,7 +266,7 @@ export class RenderPipeline {
 		};
 	}
 
-	async analyze(xml: string, overrides?: Record<string, string[]> | string[][]): Promise<{ notes: NoteOutput[]; phonemeExport: Record<string, string[]> }> {
+	async analyze(xml: string, overrides?: Record<string, string[]> | string[][]): Promise<{ notes: NoteOutput[]; phonemeExport: Record<string, string> }> {
 		let resolved: Record<string, string[]> | null = null;
 		if (overrides) {
 			if (Array.isArray(overrides)) {
@@ -286,41 +292,32 @@ export class RenderPipeline {
 
 		const trace = pipeline.serializeTrace(xml);
 
-		const phonemeExport: Record<string, string[]> = {};
-		const notePhones = new Map<string, string[]>();
-		for (const event of trace.events) {
-			if (event.phoneme === "pau" || event.phoneme === "br") continue;
-			const list = notePhones.get(event.note.id) ?? [];
-			list.push(event.phoneme);
-			notePhones.set(event.note.id, list);
-		}
-		// Only emit for root notes (single/begin) — accumulate melisma phones on begin
-		let ni = 0;
-		while (ni < trace.score.notes.length) {
+		const phonemeExport: Record<string, string> = {};
+		const ovTranspiler = new VietnameseMoraPlanTranspiler();
+		// Only emit for root notes (single/begin) — skip melisma tails (middle/end).
+		for (let ni = 0; ni < trace.score.notes.length; ni++) {
 			const note = trace.score.notes[ni];
-			if (note.isRest) { ni++; continue; }
-			if (note.syllabic === "single") {
-				if (notePhones.has(note.id)) {
-					phonemeExport[note.id] = notePhones.get(note.id)!;
-				}
-				ni++;
+			if (note.isRest) continue;
+			if (note.syllabic === "single" && note.lyric) {
+				try {
+					const plan = ovTranspiler.plan(note.lyric);
+					phonemeExport[note.id] = formatSimplePhoneGroups(plan.plan);
+				} catch {}
 			} else if (note.syllabic === "begin") {
-				const accumulated: string[] = [];
-				let j = ni;
-				while (j < trace.score.notes.length) {
-					const n = trace.score.notes[j];
-					if (notePhones.has(n.id)) {
-						accumulated.push(...notePhones.get(n.id)!);
+				let lyric = "";
+				for (let j = ni; j < trace.score.notes.length; j++) {
+					if (trace.score.notes[j].lyric) {
+						lyric = trace.score.notes[j].lyric;
+						if (trace.score.notes[j].syllabic === "end") break;
 					}
-					j++;
-					if (n.syllabic === "end" || n.syllabic === "single") break;
+					if (trace.score.notes[j].syllabic === "single" || trace.score.notes[j].isRest) break;
 				}
-				if (accumulated.length > 0) {
-					phonemeExport[note.id] = accumulated;
+				if (lyric) {
+					try {
+						const plan = ovTranspiler.plan(lyric);
+						phonemeExport[note.id] = formatSimplePhoneGroups(plan.plan);
+					} catch {}
 				}
-				ni = j;
-			} else {
-				ni++;
 			}
 		}
 
